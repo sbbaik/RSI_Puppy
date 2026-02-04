@@ -1,7 +1,6 @@
-package com.example.rsialert.domain
+package com.example.rsi_puppy.domain
 
-import com.example.rsialert.data.StockDataSource
-import yahoofinance.histquotes.Interval
+import com.example.rsi_puppy.data.StockDataSource
 
 class RsiMonitorUseCase(
     private val dataSource: StockDataSource,
@@ -11,11 +10,9 @@ class RsiMonitorUseCase(
     enum class State { OVERSOLD, OVERBOUGHT, NORMAL }
 
     suspend fun check(symbol: String): Result? {
-        val closes = dataSource.fetchClosePrices(
-            symbol = symbol,
-            days = 60,
-            interval = Interval.DAILY
-        )
+        val closes = dataSource.fetchDailyCloseHistory(symbol, days = 60)
+        if (closes.isEmpty()) return null
+
         val rsi = calculator.calculateLatestRsi(closes) ?: return null
         val state = when {
             rsi <= 30.0 -> State.OVERSOLD

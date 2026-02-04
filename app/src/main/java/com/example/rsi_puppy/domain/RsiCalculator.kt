@@ -1,9 +1,8 @@
-package com.example.rsialert.domain
+package com.example.rsi_puppy.domain
 
 import org.ta4j.core.BaseBarSeriesBuilder
 import org.ta4j.core.indicators.RSIIndicator
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator
-import org.ta4j.core.num.DecimalNum
 import java.math.BigDecimal
 import java.time.Duration
 import java.time.ZonedDateTime
@@ -15,10 +14,14 @@ class RsiCalculator(private val period: Int = 14) {
 
         val series = BaseBarSeriesBuilder().withName("price").build()
         val now = ZonedDateTime.now()
+        val barDuration = Duration.ofDays(1)
 
         closePrices.forEachIndexed { idx, price ->
-            val barTime = now.minusMinutes((closePrices.size - idx).toLong())
-            series.addBar(Duration.ofMinutes(1), barTime, DecimalNum.valueOf(price))
+            val t = now.minusDays((closePrices.size - 1 - idx).toLong())
+            val p = price.toDouble()
+
+            // open, high, low, close, volume
+            series.addBar(barDuration, t, p, p, p, p, 0.0)
         }
 
         val close = ClosePriceIndicator(series)

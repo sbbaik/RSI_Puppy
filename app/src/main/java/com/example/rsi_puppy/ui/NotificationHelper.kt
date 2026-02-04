@@ -1,5 +1,6 @@
-package com.example.rsialert.ui
+package com.example.rsi_puppy.ui
 
+import android.R
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -17,7 +18,7 @@ class NotificationHelper(private val context: Context) {
         val text = "RSI=${"%.2f".format(rsi)} ($state)"
 
         val notif = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(text)
             .setAutoCancel(true)
@@ -27,7 +28,8 @@ class NotificationHelper(private val context: Context) {
     }
 
     private fun ensureChannel() {
-        val channel = NotificationChannel(channelId, "RSI Alerts", NotificationManager.IMPORTANCE_DEFAULT)
+        val channel =
+            NotificationChannel(channelId, "RSI Alerts", NotificationManager.IMPORTANCE_DEFAULT)
         manager.createNotificationChannel(channel)
     }
 }
