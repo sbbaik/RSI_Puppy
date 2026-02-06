@@ -23,15 +23,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // 알림용: 15분 주기 + 실행 즉시 1회(이미 구현돼 있다면 유지)
-        WorkScheduler.scheduleRsiCheck(this, "030200.KS")
-        WorkScheduler.runOnceNow(this, "030200.KS")
+        WorkScheduler.scheduleRsiCheck(this, "030200")
+        WorkScheduler.runOnceNow(this, "030200")
 
         enableEdgeToEdge()
         setContent {
             RSI_PuppyTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     RsiScreen(
-                        symbol = "030200.KS",
+                        symbol = "030200",
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -70,6 +70,6 @@ private fun RsiScreen(symbol: String, modifier: Modifier = Modifier) {
 @Composable
 fun PreviewRsiScreen() {
     RSI_PuppyTheme {
-        RsiScreen(symbol = "030200.KS")
+        RsiScreen(symbol = "030200")
     }
 }

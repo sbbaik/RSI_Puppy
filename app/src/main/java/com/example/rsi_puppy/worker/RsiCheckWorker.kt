@@ -16,13 +16,6 @@ class RsiCheckWorker(
 
         return try {
             val dataSource = StockDataSource()
-            val quote = dataSource.fetchQuote(symbol)
-
-            Log.d(
-                "RSI_PUPPY",
-                "QUOTE symbol=${quote.symbol}, price=${quote.price}, prevClose=${quote.previousClose}, " +
-                        "open=${quote.open}, high=${quote.dayHigh}, low=${quote.dayLow}, vol=${quote.volume}"
-            )
 
             // 여기서 quote.price 등을 이용해 알림/저장/UI 갱신 로직으로 확장 가능
             Result.success()
