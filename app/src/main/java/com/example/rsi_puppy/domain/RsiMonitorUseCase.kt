@@ -4,21 +4,25 @@ import com.example.rsi_puppy.data.StockDataSource
 
 class RsiMonitorUseCase(
     private val dataSource: StockDataSource,
-    private val calculator: RsiCalculator
+    private val period: Int = 14,
+    private val low: Double = 30.0,
+    private val high: Double = 70.0
 ) {
-    data class Result(val symbol: String, val rsi: Double, val state: State)
-    enum class State { OVERSOLD, OVERBOUGHT, NORMAL }
+    enum class State { LOW, HIGH, NORMAL }
 
-    suspend fun check(symbol: String): Result? {
-        val closes = dataSource.fetchDailyCloseHistory(symbol, days = 60)
-        if (closes.isEmpty()) return null
+    data class Result(
+        val symbol: String,
+        val rsi: Double,
+        val state: State
+    )
 
-        val rsi = calculator.calculateLatestRsi(closes) ?: return null
+    suspend fun check(symbol: String): Result {
+        val r = dataSource.fetchRsi(symbol, period)
         val state = when {
-            rsi <= 30.0 -> State.OVERSOLD
-            rsi >= 70.0 -> State.OVERBOUGHT
+            r.rsi <= low -> State.LOW
+            r.rsi >= high -> State.HIGH
             else -> State.NORMAL
         }
-        return Result(symbol, rsi, state)
+        return Result(symbol = r.symbol, rsi = r.rsi, state = state)
     }
 }

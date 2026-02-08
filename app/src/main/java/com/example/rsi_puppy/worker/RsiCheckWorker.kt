@@ -1,10 +1,10 @@
 package com.example.rsi_puppy.worker
 
 import android.content.Context
-import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.rsi_puppy.data.StockDataSource
+import com.example.rsi_puppy.ui.NotificationHelper
 
 class RsiCheckWorker(
     ctx: Context,
@@ -15,12 +15,21 @@ class RsiCheckWorker(
         val symbol = inputData.getString("symbol") ?: return Result.failure()
 
         return try {
-            val dataSource = StockDataSource()
+            val ds = StockDataSource(baseUrl = "http://144.24.90.255:8000")
+            val r = ds.fetchRsi(symbol, period = 14)
 
-            // 여기서 quote.price 등을 이용해 알림/저장/UI 갱신 로직으로 확장 가능
+            val state = when {
+                r.rsi <= 30.0 -> "LOW"
+                r.rsi >= 70.0 -> "HIGH"
+                else -> "NORMAL"
+            }
+
+            if (state != "NORMAL") {
+                NotificationHelper(applicationContext)
+                    .notifyRsi(r.symbol, r.rsi, state)
+            }
             Result.success()
         } catch (e: Exception) {
-            Log.e("RSI_PUPPY", "Quote fetch failed: ${e.message}", e)
             Result.retry()
         }
     }

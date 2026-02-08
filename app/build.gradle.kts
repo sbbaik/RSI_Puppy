@@ -16,7 +16,6 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Twelve Data API Key (여기 값을 본인 키로 교체)
         buildConfigField(
             "String",
             "TWELVE_DATA_API_KEY",
@@ -32,19 +31,13 @@ android {
                 "proguard-rules.pro"
             )
         }
-        debug {
-            // debug에서도 동일 키 사용 (필요하면 debug만 다른 키로 별도 지정 가능)
-        }
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions {
-        jvmTarget = "11"
-    }
+    kotlinOptions { jvmTarget = "17" }
 
     buildFeatures {
         compose = true
@@ -53,24 +46,36 @@ android {
 }
 
 dependencies {
-    // Compose / AndroidX (version catalog 유지)
+    // Core
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
 
-    // Test
+    // Compose BOM (고정)
+    implementation(platform("androidx.compose:compose-bom:2026.01.01"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.01.01"))
+
+    // Compose UI
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.foundation:foundation")
+
+    // Icons
+    implementation("androidx.compose.material:material-icons-extended")
+
+    // Reorderable (Android용을 명시)
+    implementation("sh.calvin.reorderable:reorderable-android:3.0.0")
+
+    // Debug / Test
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.tooling)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // Coroutines / WorkManager / Network
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
@@ -78,9 +83,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.json:json:20240303")
 
-    // RSI 계산 (TA4J)
+    // RSI 계산
     implementation("org.ta4j:ta4j-core:0.16")
-
-    // YahooFinanceAPI는 Android에서 막히는 케이스가 많아 일단 주석 권장
-    // implementation("com.yahoofinance-api:YahooFinanceAPI:3.17.0")
 }
