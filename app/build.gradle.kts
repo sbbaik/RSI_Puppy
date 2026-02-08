@@ -85,4 +85,9 @@ dependencies {
 
     // RSI 계산
     implementation("org.ta4j:ta4j-core:0.16")
+
+    // DataStore Preferences (핵심)
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+
 }
+

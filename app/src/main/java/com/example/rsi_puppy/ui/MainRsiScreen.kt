@@ -43,14 +43,89 @@ private val OversoldBlue = Color(0xFF1565C0)
 @Composable
 fun MainRsiScreen(
     rows: SnapshotStateList<RsiRowUi>,
-    onAddClick: () -> Unit = {}
+    onAddSymbol: (String) -> Unit = {},
+    onDeleteSymbol: (String) -> Unit = {},
+    onOrderChanged: (List<RsiRowUi>) -> Unit = {},
+    checkValidSymbol: (String) -> Boolean // 유효성 검사를 위한 콜백 추가
 ) {
     val lazyListState = rememberLazyListState()
     val haptic = LocalHapticFeedback.current
 
+    // --- 종목 추가 Dialog 상태 ---
+    var showDialog by remember { mutableStateOf(false) }
+    var symbolInput by remember { mutableStateOf("") }
+    var isInputError by remember { mutableStateOf(false) } // 에러 상태 관리
+
+    // 드래그 정렬 상태 정의
     val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
         rows.add(to.index, rows.removeAt(from.index))
         haptic.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+
+        // 드래그가 일어날 때마다 바뀐 순서를 저장하기 위해 콜백 호출
+        onOrderChanged(rows.toList())
+    }
+
+    // --- 종목 추가 AlertDialog ---
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showDialog = false
+                symbolInput = ""
+                isInputError = false
+            },
+            title = { Text("종목 추가", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "추가할 종목명 또는 코드를 입력하세요.",
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    OutlinedTextField(
+                        value = symbolInput,
+                        onValueChange = {
+                            symbolInput = it
+                            if (isInputError) isInputError = false // 입력 시 에러 표시 즉시 제거
+                        },
+                        placeholder = { Text("예: 삼성전자, 005930, AAPL") },
+                        singleLine = true,
+                        isError = isInputError,
+                        supportingText = {
+                            if (isInputError) {
+                                Text("존재하지 않는 종목입니다. 다시 확인해주세요.", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = symbolInput.trim()
+                        if (trimmed.isNotBlank()) {
+                            // 유효성 검사 통과 시에만 추가하고 닫음
+                            if (checkValidSymbol(trimmed)) {
+                                onAddSymbol(trimmed)
+                                showDialog = false
+                                symbolInput = ""
+                                isInputError = false
+                            } else {
+                                // 유효하지 않으면 다이얼로그를 유지하고 에러 표시
+                                isInputError = true
+                            }
+                        }
+                    }
+                ) { Text("추가") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    symbolInput = ""
+                    isInputError = false
+                }) { Text("취소") }
+            }
+        )
     }
 
     Scaffold(
@@ -75,7 +150,7 @@ fun MainRsiScreen(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = onAddClick) {
+                    IconButton(onClick = { showDialog = true }) {
                         Icon(Icons.Filled.Add, contentDescription = "Add")
                     }
                 }
@@ -93,9 +168,7 @@ fun MainRsiScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // ---- 컬럼 헤더: 배경을 "세련된 톤"으로 추가 (surfaceVariant + 약한 알파)
-            val headerBg =
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            val headerBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
 
             Row(
                 modifier = Modifier
@@ -150,9 +223,23 @@ fun MainRsiScreen(
                             isDragging = isDragging,
                             canMoveUp = index > 0,
                             canMoveDown = index < rows.lastIndex,
-                            onMoveUp = { if (index > 0) rows.swap(index, index - 1) },
-                            onMoveDown = { if (index < rows.lastIndex) rows.swap(index, index + 1) },
-                            onDelete = { rows.removeAt(index) }
+                            onMoveUp = {
+                                if (index > 0) {
+                                    rows.swap(index, index - 1)
+                                    onOrderChanged(rows.toList())
+                                }
+                            },
+                            onMoveDown = {
+                                if (index < rows.lastIndex) {
+                                    rows.swap(index, index + 1)
+                                    onOrderChanged(rows.toList())
+                                }
+                            },
+                            onDelete = {
+                                val symbolToDelete = rows[index].name
+                                rows.removeAt(index)
+                                onDeleteSymbol(symbolToDelete)
+                            }
                         )
                     }
 
