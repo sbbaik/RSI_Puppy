@@ -13,18 +13,19 @@ data class StockMaster(
 
 /**
  * [수정 사항]
- * 1. getName(symbol) 함수 추가: 내부 심볼(005930.KS)을 UI용 이름(삼성전자)으로 변환합니다.
- * 2. 지수(Index) 매핑 확장: KOSPI200, KOSDAQ 등 주요 지수에 대한 양방향 변환을 지원합니다.
- * 3. 공백 및 대소문자 예외 처리 강화.
+ * 1. searchStocks(query) 추가: 입력된 텍스트가 포함된 종목 리스트를 반환하여 자동완성 기능을 지원합니다.
+ * 2. 기존 getName, getSymbol 등 핵심 매핑 로직 유지.
+ * 3. 종목명 검색 시 대소문자 및 공백에 유연하게 대응합니다.
  */
 object StockMasterLoader {
 
     private const val FILE_NAME = "stocks_kr.csv"
     private const val TAG = "StockMasterLoader"
 
-    // 메모리 캐시: 검색 효율을 위해 두 종류의 Map을 운용합니다.
+    // 메모리 캐시: 검색 효율을 위해 Map과 원본 List를 병행 운용합니다.
     private var nameMap: Map<String, StockMaster> = emptyMap()
     private var symbolMap: Map<String, StockMaster> = emptyMap()
+    private var allStocks: List<StockMaster> = emptyList()
     private var isLoaded = false
 
     /**
@@ -36,12 +37,12 @@ object StockMasterLoader {
         try {
             context.assets.open(FILE_NAME).use { input ->
                 BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { br ->
-                    val allStocks = br.lineSequence()
+                    allStocks = br.lineSequence()
                         .drop(1) // header 제외
                         .mapNotNull { line -> parseLine(line) }
                         .toList()
 
-                    // 대소문자 구분 없는 검색을 위해 Key를 대문자로 통일
+                    // 빠른 조회를 위한 맵 생성
                     nameMap = allStocks.associateBy { it.name.uppercase() }
                     symbolMap = allStocks.associateBy { it.symbol.uppercase() }
 
@@ -55,20 +56,30 @@ object StockMasterLoader {
     }
 
     /**
-     * [서버 요청용] 종목명이나 코드를 서버가 이해하는 yfinance 심볼로 변환합니다.
-     * 예: "삼성전자" -> "005930.KS", "KOSPI200" -> "^KS200"
+     * [추가된 기능] 실시간 검색 제안용 함수
+     * 사용자가 "커버드"라고 치면 "커버드콜" 관련 종목들을 리스트로 반환합니다.
+     */
+    fun searchStocks(query: String): List<StockMaster> {
+        val q = query.trim().uppercase()
+        if (q.isEmpty()) return emptyList()
+
+        // 1. 이름에 검색어가 포함되거나 2. 심볼에 검색어가 포함된 항목 필터링
+        // 상위 15개 정도만 반환하여 UI 쾌적함 유지
+        return allStocks.filter {
+            it.name.uppercase().contains(q) || it.symbol.uppercase().contains(q)
+        }.take(15)
+    }
+
+    /**
+     * [서버 요청용] 종목명이나 코드를 yfinance 심볼로 변환
      */
     fun getSymbol(query: String): String? {
         val q = query.trim().uppercase()
         if (q.isEmpty()) return null
 
-        // 1. 종목명으로 검색
         nameMap[q]?.let { return it.symbol }
-
-        // 2. 심볼(코드)로 검색
         symbolMap[q]?.let { return it.symbol }
 
-        // 3. 지수 예외 처리
         val indexSymbol = when (q) {
             "KOSPI200" -> "^KS200"
             "KOSDAQ" -> "^KQ11"
@@ -76,7 +87,6 @@ object StockMasterLoader {
         }
         if (indexSymbol != null) return indexSymbol
 
-        // 4. 숫자 6자리만 온 경우 한국 시장(.KS) 기본 적용
         if (q.length == 6 && q.all { it.isDigit() }) {
             val ksQuery = "$q.KS"
             return symbolMap[ksQuery]?.symbol ?: ksQuery
@@ -86,20 +96,17 @@ object StockMasterLoader {
     }
 
     /**
-     * [UI 표시용] 서버 심볼을 사용자가 보기 편한 종목명으로 변환합니다.
-     * 예: "005930.KS" -> "삼성전자", "^KS200" -> "KOSPI200"
+     * [UI 표시용] 심볼을 한글 종목명으로 변환
      */
     fun getName(symbol: String): String {
         val s = symbol.trim().uppercase()
 
-        // 1. 마스터 데이터에서 이름 찾기
         symbolMap[s]?.let { return it.name }
 
-        // 2. 지수 심볼 역변환
         return when (s) {
             "^KS200" -> "KOSPI200"
             "^KQ11" -> "KOSDAQ"
-            else -> symbol // 매칭되는 이름이 없으면 심볼 자체를 반환 (예: 미등록 해외주식 등)
+            else -> symbol
         }
     }
 
@@ -108,7 +115,7 @@ object StockMasterLoader {
         if (trimmed.isEmpty()) return null
 
         val parts = trimmed.split(',')
-        if (parts.size < 2) return null // 최소 name, symbol은 있어야 함
+        if (parts.size < 2) return null
 
         val name = parts[0].trim()
         val symbol = parts[1].trim()

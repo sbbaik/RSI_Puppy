@@ -1,8 +1,10 @@
 package com.example.rsi_puppy.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.rsi_puppy.data.StockMasterLoader // 검색 기능을 위해 추가
 import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -46,7 +49,7 @@ fun MainRsiScreen(
     onAddSymbol: (String) -> Unit = {},
     onDeleteSymbol: (String) -> Unit = {},
     onOrderChanged: (List<RsiRowUi>) -> Unit = {},
-    checkValidSymbol: (String) -> Boolean // 유효성 검사를 위한 콜백 추가
+    checkValidSymbol: (String) -> Boolean
 ) {
     val lazyListState = rememberLazyListState()
     val haptic = LocalHapticFeedback.current
@@ -54,18 +57,19 @@ fun MainRsiScreen(
     // --- 종목 추가 Dialog 상태 ---
     var showDialog by remember { mutableStateOf(false) }
     var symbolInput by remember { mutableStateOf("") }
-    var isInputError by remember { mutableStateOf(false) } // 에러 상태 관리
+    var isInputError by remember { mutableStateOf(false) }
 
-    // 드래그 정렬 상태 정의
+    // [추가] 실시간 검색 결과 리스트 상태
+    val suggestions = remember(symbolInput) {
+        StockMasterLoader.searchStocks(symbolInput)
+    }
+
     val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
         rows.add(to.index, rows.removeAt(from.index))
         haptic.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
-
-        // 드래그가 일어날 때마다 바뀐 순서를 저장하기 위해 콜백 호출
         onOrderChanged(rows.toList())
     }
 
-    // --- 종목 추가 AlertDialog ---
     if (showDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -85,18 +89,62 @@ fun MainRsiScreen(
                         value = symbolInput,
                         onValueChange = {
                             symbolInput = it
-                            if (isInputError) isInputError = false // 입력 시 에러 표시 즉시 제거
+                            if (isInputError) isInputError = false
                         },
-                        placeholder = { Text("예: 삼성전자, 005930, AAPL") },
+                        placeholder = { Text("예: 삼성전자, 커버드콜, 005930") },
                         singleLine = true,
                         isError = isInputError,
                         supportingText = {
                             if (isInputError) {
-                                Text("존재하지 않는 종목입니다. 다시 확인해주세요.", color = MaterialTheme.colorScheme.error)
+                                Text("존재하지 않는 종목입니다.", color = MaterialTheme.colorScheme.error)
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    // [추가] 검색 추천 목록 UI
+                    if (suggestions.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 180.dp), // 최대 높이 제한
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            LazyColumn {
+                                items(suggestions) { stock ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                // 클릭 시 해당 종목 코드로 즉시 추가 시도
+                                                if (checkValidSymbol(stock.symbol)) {
+                                                    onAddSymbol(stock.symbol)
+                                                    showDialog = false
+                                                    symbolInput = ""
+                                                    isInputError = false
+                                                }
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = stock.name,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            text = stock.symbol,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                }
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -104,14 +152,12 @@ fun MainRsiScreen(
                     onClick = {
                         val trimmed = symbolInput.trim()
                         if (trimmed.isNotBlank()) {
-                            // 유효성 검사 통과 시에만 추가하고 닫음
                             if (checkValidSymbol(trimmed)) {
                                 onAddSymbol(trimmed)
                                 showDialog = false
                                 symbolInput = ""
                                 isInputError = false
                             } else {
-                                // 유효하지 않으면 다이얼로그를 유지하고 에러 표시
                                 isInputError = true
                             }
                         }
@@ -136,7 +182,6 @@ fun MainRsiScreen(
                     .background(MaterialTheme.colorScheme.surface)
             ) {
                 Spacer(Modifier.height(8.dp))
-
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -154,22 +199,12 @@ fun MainRsiScreen(
                         Icon(Icons.Filled.Add, contentDescription = "Add")
                     }
                 }
-
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant
-                )
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     ) { innerPadding ->
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             val headerBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -184,25 +219,18 @@ fun MainRsiScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
-
                 Text(
                     text = "RSI",
                     fontSize = 19.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .width(RSI_COL_WIDTH)
-                        .padding(end = 8.dp),
+                    modifier = Modifier.width(RSI_COL_WIDTH).padding(end = 8.dp),
                     textAlign = TextAlign.End
                 )
-
                 Spacer(Modifier.width(MENU_SLOT))
             }
 
-            HorizontalDivider(
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant
-            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
             LazyColumn(
                 state = lazyListState,
@@ -212,11 +240,7 @@ fun MainRsiScreen(
                     items = rows,
                     key = { _, item -> item.name }
                 ) { index, row ->
-
-                    ReorderableItem(
-                        state = reorderState,
-                        key = row.name
-                    ) { isDragging ->
+                    ReorderableItem(state = reorderState, key = row.name) { isDragging ->
                         StockRow(
                             scope = this,
                             row = row,
@@ -242,7 +266,6 @@ fun MainRsiScreen(
                             }
                         )
                     }
-
                     if (index < rows.lastIndex) {
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 16.dp),
@@ -286,9 +309,7 @@ private fun StockRow(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f) else rowBg
-            )
+            .background(if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f) else rowBg)
             .padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
