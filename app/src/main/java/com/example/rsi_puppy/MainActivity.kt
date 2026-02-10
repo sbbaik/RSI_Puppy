@@ -1,6 +1,7 @@
 package com.example.rsi_puppy
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
@@ -25,7 +26,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. CSV 마스터 데이터 로드 (메모리 캐싱)
+        // 1. CSV 마스터 데이터 로드 (최우선 실행)
         StockMasterLoader.load(applicationContext)
 
         stockRepository = StockRepository(applicationContext)
@@ -34,43 +35,42 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             RSI_PuppyTheme {
-                // UI 상태를 유지하는 리스트 (화면에 표시될 이름과 RSI 값을 가짐)
+                // UI 상태 리스트
                 val rows = remember { mutableStateListOf<RsiRowUi>() }
 
-                // DataStore 리스트 관찰 및 UI 갱신
+                // 데이터 관찰 및 업데이트 로직
                 LaunchedEffect(Unit) {
                     rsiMonitorUseCase.getAllSymbols().collect { symbols ->
-                        // 1. 저장된 종목이 없을 때 디폴트 종목 추가
+                        // 종목이 없을 때 기본값 추가
                         if (symbols.isEmpty()) {
                             val defaultStocks = listOf("KOSPI200", "KOSDAQ", "KT", "삼성전자", "LG전자")
                             defaultStocks.forEach { rsiMonitorUseCase.addSymbol(it) }
                             return@collect
                         }
 
-                        // 2. UI 리스트 초기화 및 이름 변환 로직 적용
+                        // [개선] 1. UI 리스트 즉시 초기화 (RSI가 오기 전에도 이름은 먼저 보여줌)
                         rows.clear()
                         symbols.forEach { rawSymbol ->
-                            // StockMasterLoader를 통해 코드를 이름으로 변환 (예: 005930.KS -> 삼성전자)
-                            // 만약 이미 이름이면 그대로 반환됨
-                            val displayName = if (rawSymbol.contains(".")) {
-                                StockMasterLoader.getName(rawSymbol)
-                            } else {
-                                rawSymbol
-                            }
+                            // getName은 매칭 실패 시 원본을 반환하므로 조건문 없이 호출 가능
+                            val displayName = StockMasterLoader.getName(rawSymbol)
                             rows.add(RsiRowUi(displayName, 0))
                         }
 
-                        // 3. 실제 RSI 데이터 페치 및 개별 업데이트
+                        // [개선] 2. 병렬 처리를 통한 RSI 업데이트
                         symbols.forEachIndexed { index, rawSymbol ->
-                            try {
-                                val result = rsiMonitorUseCase.check(rawSymbol)
-                                if (index < rows.size) {
-                                    // 서버에서 받은 심볼(005930.KS 등)을 다시 이름으로 변환하여 UI 업데이트
-                                    val friendlyName = StockMasterLoader.getName(result.symbol)
-                                    rows[index] = RsiRowUi(friendlyName, result.rsi.toInt())
+                            // lifecycleScope.launch를 통해 각 종목 요청을 독립적으로 실행
+                            lifecycleScope.launch {
+                                try {
+                                    val result = rsiMonitorUseCase.check(rawSymbol)
+
+                                    // 데이터가 도착한 순서대로 해당 줄만 업데이트
+                                    if (index < rows.size) {
+                                        val friendlyName = StockMasterLoader.getName(result.symbol)
+                                        rows[index] = RsiRowUi(friendlyName, result.rsi.toInt())
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("MainActivity", "Error fetching $rawSymbol: ${e.message}")
                                 }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
                             }
                         }
                     }
@@ -84,18 +84,15 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onDeleteSymbol = { friendlyName ->
-                        // UI에 표시된 이름 대신, 실제 로직 처리를 위해
-                        // UseCase가 내부 저장소의 데이터를 관리하도록 설계됨
                         lifecycleScope.launch {
-                            // 이름으로 등록된 경우와 코드로 등록된 경우 모두 대응하기 위해
-                            // 삭제 시에도 MasterLoader의 도움을 받을 수 있음
+                            // UI 이름 -> 저장용 심볼 변환 후 삭제
                             val targetSymbol = StockMasterLoader.getSymbol(friendlyName) ?: friendlyName
                             rsiMonitorUseCase.deleteSymbol(targetSymbol)
                         }
                     },
                     onOrderChanged = { updatedRows ->
                         lifecycleScope.launch {
-                            // UI의 이름들을 다시 서버용 심볼/코드로 변환하여 저장 순서 유지
+                            // 순서 변경 저장
                             val newOrder = updatedRows.map {
                                 StockMasterLoader.getSymbol(it.name) ?: it.name
                             }
