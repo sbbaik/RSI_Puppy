@@ -64,6 +64,8 @@ dependencies {
 
     // Icons
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("me.leolin:ShortcutBadger:1.1.22@aar")
 
     // Reorderable (Android용을 명시)
     implementation("sh.calvin.reorderable:reorderable-android:3.0.0")
