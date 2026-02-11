@@ -27,6 +27,7 @@ import com.example.rsi_puppy.ui.RsiRowUi
 import com.example.rsi_puppy.ui.theme.RSI_PuppyTheme
 import com.example.rsi_puppy.worker.RsiWorker
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.combine
 import me.leolin.shortcutbadger.ShortcutBadger
 import java.util.concurrent.TimeUnit
 
@@ -57,47 +58,39 @@ class MainActivity : ComponentActivity() {
                         StockMasterLoader.load(applicationContext)
                     }
 
-                    rsiMonitorUseCase.getAllSymbols().collect { symbols ->
-                        // [핵심 1] 진행 중인 구형 작업 취소
-                        coroutineContext[Job]?.cancelChildren()
-
+                    stockRepository.monitoredStocks.combine(stockRepository.allStockData) { symbols, dbData ->
                         if (symbols.isEmpty()) {
                             val defaultStocks = listOf("KOSPI200", "KOSDAQ", "KT", "삼성전자", "LG전자")
-                            defaultStocks.forEach { rsiMonitorUseCase.addSymbol(it) }
-                            return@collect
-                        }
-
-                        // [핵심 2] Smart Sync: clear() 하지 않고 필요한 부분만 수정
-                        val currentSymbolNames = symbols.map { StockMasterLoader.getName(it) }
-
-                        // 1. 삭제된 종목 제거
-                        rows.removeAll { it.name !in currentSymbolNames }
-
-                        // 2. 추가된 종목만 삽입 (기존 종목은 RSI 유지)
-                        symbols.forEachIndexed { index, rawSymbol ->
-                            val displayName = StockMasterLoader.getName(rawSymbol)
-                            val existingIndex = rows.indexOfFirst { it.name == displayName }
-
-                            if (existingIndex == -1) {
-                                // 리스트에 없는 새 종목이면 해당 위치에 즉시 0으로 추가 (반응성 향상)
-                                if (index <= rows.size) rows.add(index, RsiRowUi(displayName, 0))
-                                else rows.add(RsiRowUi(displayName, 0))
+                            defaultStocks.forEach { symbol ->
+                                lifecycleScope.launch { rsiMonitorUseCase.addSymbol(symbol) }
                             }
+                            emptyList<RsiRowUi>()
+                        } else {
+                            val dataMap = dbData.associateBy { it.symbol }
+                            symbols.map { symbol ->
+                                val displayName = StockMasterLoader.getName(symbol)
+                                val rsiValue = dataMap[symbol]?.rsi?.toInt() ?: 0
+                                RsiRowUi(displayName, rsiValue)
+                            }
+                        }
+                    }.collect { combinedRows ->
+                        rows.clear()
+                        rows.addAll(combinedRows)
+                        // 리스트 변경 시 알림/배지 업데이트
+                        updateRsiNotification(rows)
+                    }
+                }
 
-                            // 3. 개별 종목 RSI 업데이트 (병렬 실행)
+                LaunchedEffect(Unit) {
+                    stockRepository.monitoredStocks.collect { symbols ->
+                        if (symbols.isEmpty()) return@collect
+                        symbols.forEach { symbol ->
                             launch {
                                 try {
-                                    val result = rsiMonitorUseCase.check(rawSymbol)
-                                    val updatedName = StockMasterLoader.getName(result.symbol)
-
-                                    // 이름 기반으로 정확한 위치를 찾아 업데이트 (인덱스 꼬임 방지)
-                                    val targetIndex = rows.indexOfFirst { it.name == updatedName }
-                                    if (targetIndex != -1) {
-                                        rows[targetIndex] = RsiRowUi(updatedName, result.rsi.toInt())
-                                        updateLauncherBadge(rows)
-                                    }
+                                    val result = rsiMonitorUseCase.check(symbol)
+                                    stockRepository.updateRsiValue(symbol, result.rsi)
                                 } catch (e: Exception) {
-                                    Log.e("MainActivity", "Error: ${e.message}")
+                                    Log.e("MainActivity", "Check failed for $symbol: ${e.message}")
                                 }
                             }
                         }
@@ -129,7 +122,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- 알림 및 배지 함수 (기존과 동일) ---
+    // --- 알림 메시지 복구 및 배지 업데이트 함수 ---
+    private fun updateRsiNotification(rows: List<RsiRowUi>) {
+        val alertedStocks = rows.filter { it.rsi >= 70 || (it.rsi <= 30 && it.rsi > 0) }
+        val alertCount = alertedStocks.size
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "RSI_ALERTS"
+
+        if (alertCount > 0) {
+            // 외부 라이브러리 배지 시도
+            ShortcutBadger.applyCount(applicationContext, alertCount)
+
+            // 메시지 내용 구성
+            val stockNames = alertedStocks.joinToString(", ") { it.name }
+            val message = "주의 종목($alertCount): $stockNames"
+
+            val notification = NotificationCompat.Builder(this, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("RSI Puppy 알림")
+                .setContentText(message)
+                .setNumber(alertCount) // 시스템 배지 연동
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setOnlyAlertOnce(true) // 데이터 갱신 시마다 소리나는 것 방지
+                .build()
+
+            notificationManager.notify(100, notification)
+        } else {
+            ShortcutBadger.removeCount(applicationContext)
+            notificationManager.cancel(100)
+        }
+    }
 
     private fun checkNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -142,34 +164,18 @@ class MainActivity : ComponentActivity() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            // 일반 알림 채널 복구 (IMPORTANCE_HIGH)
             val channel = NotificationChannel(
-                "RSI_ALERTS", "RSI 알림", NotificationManager.IMPORTANCE_HIGH
+                "RSI_ALERTS",
+                "RSI 알림",
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "RSI 배지 업데이트용 채널"
+                description = "RSI 수치 알림 및 배지 관리"
                 setShowBadge(true)
             }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
-        }
-    }
-
-    private fun updateLauncherBadge(rows: List<RsiRowUi>) {
-        val alertCount = rows.count { it.rsi >= 70 || (it.rsi <= 30 && it.rsi > 0) }
-        ShortcutBadger.applyCount(applicationContext, alertCount)
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (alertCount > 0) {
-            val notification = NotificationCompat.Builder(this, "RSI_ALERTS")
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
-                .setContentTitle("RSI 지표 알림")
-                .setContentText("주의 종목 $alertCount 건이 감지되었습니다.")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setNumber(alertCount)
-                .setAutoCancel(true)
-                .build()
-            notificationManager.notify(1, notification)
-        } else {
-            notificationManager.cancel(1)
         }
     }
 
@@ -177,12 +183,12 @@ class MainActivity : ComponentActivity() {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
-        val rsiWorkRequest = PeriodicWorkRequestBuilder<RsiWorker>(15, TimeUnit.MINUTES)
+        val rsiWorkRequest = PeriodicWorkRequestBuilder<RsiWorker>(1, TimeUnit.HOURS)
             .setConstraints(constraints)
             .build()
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
             "RsiUpdateWork",
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.REPLACE,
             rsiWorkRequest
         )
     }
