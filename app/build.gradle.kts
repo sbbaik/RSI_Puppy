@@ -10,21 +10,15 @@ plugins {
 
 android {
     namespace = "com.example.rsi_puppy"
-    compileSdk = 36 // 참고: 현재 안정 버전은 34~35이며, 36은 최신 프리뷰일 수 있습니다.
+    compileSdk = 35 // 참고: 현재 안정 버전은 34~35이며, 36은 최신 프리뷰일 수 있습니다.
 
     defaultConfig {
-        applicationId = "com.example.rsi_puppy"
+        applicationId = "com.sbbaik.rsipuppy"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        buildConfigField(
-            "String",
-            "TWELVE_DATA_API_KEY",
-            "\"e52e488754c649b19b89f65371946328\""
-        )
     }
 
     buildTypes {
