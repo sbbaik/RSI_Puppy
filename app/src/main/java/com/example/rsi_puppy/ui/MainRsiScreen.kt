@@ -25,7 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.rsi_puppy.data.StockMasterLoader // 검색 기능을 위해 추가
+import com.example.rsi_puppy.data.StockMasterLoader
 import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -38,8 +38,8 @@ data class RsiRowUi(
 private fun isOverbought(rsi: Int) = rsi >= 70
 private fun isOversold(rsi: Int) = rsi <= 30
 
-private val MENU_SLOT = 40.dp
-private val RSI_COL_WIDTH: Dp = 56.dp
+private val MENU_SLOT = 32.dp // 더 축소
+private val RSI_COL_WIDTH: Dp = 44.dp // 더 축소
 private val OversoldBlue = Color(0xFF1565C0)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,12 +54,10 @@ fun MainRsiScreen(
     val lazyListState = rememberLazyListState()
     val haptic = LocalHapticFeedback.current
 
-    // --- 종목 추가 Dialog 상태 ---
     var showDialog by remember { mutableStateOf(false) }
     var symbolInput by remember { mutableStateOf("") }
     var isInputError by remember { mutableStateOf(false) }
 
-    // [추가] 실시간 검색 결과 리스트 상태
     val suggestions = remember(symbolInput) {
         StockMasterLoader.searchStocks(symbolInput)
     }
@@ -82,7 +80,7 @@ fun MainRsiScreen(
                 Column {
                     Text(
                         "추가할 종목명 또는 코드를 입력하세요.",
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     OutlinedTextField(
@@ -91,7 +89,7 @@ fun MainRsiScreen(
                             symbolInput = it
                             if (isInputError) isInputError = false
                         },
-                        placeholder = { Text("예: 삼성전자, 커버드콜, 005930") },
+                        placeholder = { Text("예: 삼성전자, 005930") },
                         singleLine = true,
                         isError = isInputError,
                         supportingText = {
@@ -102,13 +100,12 @@ fun MainRsiScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // [추가] 검색 추천 목록 UI
                     if (suggestions.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 180.dp), // 최대 높이 제한
+                                .heightIn(max = 160.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -118,7 +115,6 @@ fun MainRsiScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                // 클릭 시 해당 종목 코드로 즉시 추가 시도
                                                 if (checkValidSymbol(stock.symbol)) {
                                                     onAddSymbol(stock.symbol)
                                                     showDialog = false
@@ -126,17 +122,18 @@ fun MainRsiScreen(
                                                     isInputError = false
                                                 }
                                             }
-                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = stock.name,
+                                            fontSize = 14.sp,
                                             fontWeight = FontWeight.Medium,
                                             modifier = Modifier.weight(1f)
                                         )
                                         Text(
                                             text = stock.symbol,
-                                            style = MaterialTheme.typography.bodySmall,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
@@ -181,22 +178,22 @@ fun MainRsiScreen(
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
             ) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(2.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical =6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "RSI 알리미",
-                        fontSize = 22.sp,
+                        fontSize = 18.sp, // 소폭 축소
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = { showDialog = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add")
+                        Icon(Icons.Filled.Add, contentDescription = "Add", modifier = Modifier.size(22.dp))
                     }
                 }
                 HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -204,27 +201,27 @@ fun MainRsiScreen(
         }
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            val headerBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            val headerBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(headerBg)
-                    .padding(start = 40.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "  종목",
-                    fontSize = 19.sp,
+                    text = "종목",
+                    fontSize = 14.sp, // 더 축소
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
                     text = "RSI",
-                    fontSize = 19.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(RSI_COL_WIDTH).padding(end = 8.dp),
+                    modifier = Modifier.width(RSI_COL_WIDTH).padding(end = 4.dp),
                     textAlign = TextAlign.End
                 )
                 Spacer(Modifier.width(MENU_SLOT))
@@ -266,13 +263,6 @@ fun MainRsiScreen(
                             }
                         )
                     }
-                    if (index < rows.lastIndex) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 16.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
-                    }
                 }
             }
         }
@@ -291,8 +281,8 @@ private fun StockRow(
     onDelete: () -> Unit
 ) {
     val rowBg = when {
-        isOverbought(row.rsi) -> MaterialTheme.colorScheme.error.copy(alpha = 0.10f)
-        isOversold(row.rsi) -> OversoldBlue.copy(alpha = 0.10f)
+        isOverbought(row.rsi) -> MaterialTheme.colorScheme.error.copy(alpha = 0.06f)
+        isOversold(row.rsi) -> OversoldBlue.copy(alpha = 0.06f)
         else -> Color.Transparent
     }
 
@@ -307,22 +297,22 @@ private fun StockRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f) else rowBg)
-            .padding(horizontal = 12.dp, vertical = 14.dp),
+            .height(42.dp) // 초고밀도: 52dp -> 42dp로 대폭 축소
+            .background(if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else rowBg)
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = row.name,
-            fontSize = 19.sp,
+            fontSize = 14.sp, // 15sp -> 14sp
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
 
         Text(
             text = row.rsi.toString(),
-            fontSize = 19.sp,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
             color = rsiColor,
             modifier = Modifier.width(RSI_COL_WIDTH),
             textAlign = TextAlign.End
@@ -336,7 +326,12 @@ private fun StockRow(
                 onClick = { menuOpen = true },
                 modifier = with(scope) { Modifier.draggableHandle() }
             ) {
-                Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                Icon(
+                    Icons.Filled.Menu,
+                    contentDescription = "Menu",
+                    modifier = Modifier.size(18.dp), // 아이콘 크기 더 축소
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
             }
 
             DropdownMenu(
@@ -344,23 +339,24 @@ private fun StockRow(
                 onDismissRequest = { menuOpen = false }
             ) {
                 DropdownMenuItem(
-                    text = { Text("위로 이동") },
+                    text = { Text("위로 이동", fontSize = 13.sp) },
                     onClick = { menuOpen = false; onMoveUp() },
                     enabled = canMoveUp
                 )
                 DropdownMenuItem(
-                    text = { Text("아래로 이동") },
+                    text = { Text("아래로 이동", fontSize = 13.sp) },
                     onClick = { menuOpen = false; onMoveDown() },
                     enabled = canMoveDown
                 )
                 HorizontalDivider()
                 DropdownMenuItem(
-                    text = { Text("삭제") },
+                    text = { Text("삭제", fontSize = 13.sp, color = MaterialTheme.colorScheme.error) },
                     onClick = { menuOpen = false; onDelete() }
                 )
             }
         }
     }
+    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 }
 
 private fun <T> SnapshotStateList<T>.swap(i: Int, j: Int) {

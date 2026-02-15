@@ -36,29 +36,37 @@ class RsiWorker(appContext: Context, workerParams: WorkerParameters) :
             val symbols = useCase.getAllSymbols().first()
             if (symbols.isEmpty()) return@coroutineScope Result.success()
 
-            // 모든 종목을 체크하고 주의 종목(RSI >= 70 또는 <= 30) 리스트 추출
+            // 1. 모든 종목 체크 수행
             val results = symbols.map { symbol ->
                 async {
                     try {
                         val result = useCase.check(symbol)
                         repository.updateRsiValue(symbol, result.rsi)
+
                         if (result.rsi >= 70 || (result.rsi <= 30 && result.rsi > 0)) {
                             StockMasterLoader.getName(symbol)
-                        } else null
+                        } else {
+                            null
+                        }
                     } catch (e: Exception) {
-                        Log.e("RsiWorker", "Error checking $symbol: ${e.message}")
-                        null
+                        // 개별 종목 에러 발생 시 로그를 남기고 예외를 밖으로 던집니다.
+                        Log.e("RsiWorker", "Critical error checking $symbol: ${e.message}")
+                        throw e
                     }
                 }
             }.awaitAll().filterNotNull()
 
-            // 결과에 따른 알림 업데이트
+            // 2. 모든 요청이 성공했을 때만 알림 업데이트 (기존 카운트 변경 지점)
             sendRsiNotification(results)
 
             Result.success()
         } catch (e: Exception) {
-            Log.e("RsiWorker", "Worker failed: ${e.message}")
-            Result.retry()
+            // 하나라도 실패하여 throw가 발생하면 일로 들어옵니다.
+            // sendRsiNotification을 호출하지 않으므로 기존 배지/알림이 그대로 유지됩니다.
+            Log.e("RsiWorker", "Worker failed (skipping update, maintaining old count): ${e.message}")
+
+            // 즉시 재시도하지 않고 이번 회차는 종료합니다. (1시간 후 다음 주기에 다시 실행)
+            Result.failure()
         }
     }
 
@@ -71,8 +79,8 @@ class RsiWorker(appContext: Context, workerParams: WorkerParameters) :
         if (count > 0) {
             // 1. 배지 카운트 적용
             ShortcutBadger.applyCount(applicationContext, count)
-
-            // 2. 알림 채널 생성 (MainActivity와 동일)
+/*
+            // 2. 알림 채널 생성
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(
                     channelId, "RSI 알림",
@@ -95,9 +103,12 @@ class RsiWorker(appContext: Context, workerParams: WorkerParameters) :
                 .build()
 
             notificationManager.notify(100, notification)
+            */
         } else {
             ShortcutBadger.removeCount(applicationContext)
+            /*
             notificationManager.cancel(100)
+                         */
         }
     }
 }
